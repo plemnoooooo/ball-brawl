@@ -6,10 +6,7 @@ export default defineConfig({
     server: {
         host: "0.0.0.0",
         proxy: {
-            "/socket.io/": {
-                changeOrigin: true,
-                ws: true,
-            }
+            "/socket.io/": { ws: true }
         }
     },
     plugins: [socketIoPlugin(runServerEvents)]

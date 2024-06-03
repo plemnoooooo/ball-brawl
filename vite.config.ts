@@ -7,7 +7,6 @@ export default defineConfig({
         host: "0.0.0.0",
         proxy: {
             "/socket.io/": {
-                changeOrigin: true,
                 secure: false,
                 ws: true,
             }

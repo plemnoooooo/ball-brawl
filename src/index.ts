@@ -6,7 +6,7 @@ import Game from "./Game";
 eruda.init();
 
 window.addEventListener("DOMContentLoaded", () => {
-    const socket = io({ transports: ["websocket"] });
+    const socket = io();
 
     socket.on("connect", () => {
         console.log("connected to server.");

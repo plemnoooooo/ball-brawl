@@ -1,12 +1,14 @@
 import io from "socket.io-client";
 import eruda from "eruda";
 import "./style.css";
+
+import { SERVER } from "./constants";
 import Game from "./Game";
 
 eruda.init();
 
 window.addEventListener("DOMContentLoaded", () => {
-    const socket = io();
+    const socket = io(import.meta.env.DEV ? "": SERVER.URL);
 
     socket.on("connect", () => {
         console.log("connected to server.");

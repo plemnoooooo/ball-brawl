@@ -2,7 +2,7 @@ import io from "socket.io-client";
 import eruda from "eruda";
 import "./style.css";
 
-import { SERVER } from "./constants";
+// import { SERVER } from "./constants";
 import Game from "./Game";
 
 eruda.init();

@@ -15,6 +15,7 @@
     "vite": "^5.0.2"
   },
   "dependencies": {
+    "@geckos.io/snapshot-interpolation": "^1.1.0",
     "excalibur": "^0.29.3",
     "express": "^4.18.2",
     "socket.io": "^4.7.5",

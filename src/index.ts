@@ -17,5 +17,5 @@ window.addEventListener("DOMContentLoaded", () => {
         game.start();
     });
 
-    socket.on("connect_error", (error) => console.error(error));
+    socket.on("connect_error", (error) => console.error(error.name, error.message));
 });

@@ -10,6 +10,7 @@ export function runServerEvents(io: Io) {
     
     io.on("connect", (socket) => {
         console.log(`socket ${socket.id} has connected.`);
+        socket.on("error", (error) => console.log(error.name, error.message));
         socket.on("disconnect", () => {
             console.log(`socket ${socket.id} has disconnected.`);
 

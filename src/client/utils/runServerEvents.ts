@@ -9,11 +9,7 @@ export function runServerEvents(io: Io) {
     const players: Map<string, Player> = new Map();
     
     io.on("connect", (socket) => {
-        console.log(`socket ${socket.id} has connected.`);
-        socket.on("error", (error) => console.log(error.name, error.message));
         socket.on("disconnect", () => {
-            console.log(`socket ${socket.id} has disconnected.`);
-
             socket.broadcast.emit("deletePlayer", socket.id);
             players.delete(socket.id);
         });

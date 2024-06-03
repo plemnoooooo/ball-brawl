@@ -1,22 +1,25 @@
 {
-  "name": "ball-brawl",
+  "name": "vite-typescript-starter",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "dev": "nodemon -w src/server -x tsx src/server/index.ts",
+    "start": "NODE_ENV=production tsx src/server/index.ts",
+    "build": "vite build"
   },
   "devDependencies": {
-    "eruda": "^3.0.1",
-    "typescript": "^5.2.2",
-    "vite": "^5.2.0"
+    "@types/express": "^4.17.15",
+    "@types/node": "^20.9.3",
+    "nodemon": "^3.0.1",
+    "vite": "^5.0.2"
   },
   "dependencies": {
-    "@geckos.io/snapshot-interpolation": "^1.1.0",
     "excalibur": "^0.29.3",
+    "express": "^4.18.2",
     "socket.io": "^4.7.5",
-    "socket.io-client": "^4.7.5"
+    "socket.io-client": "^4.7.5",
+    "tsx": "^4.5.0",
+    "typescript": "^5.3.2",
+    "vite-express": "*"
   }
 }

@@ -5,7 +5,10 @@ import Game from "./Game";
 
 eruda.init();
 
-const socket = io({ transports: ["websocket"] });
+const socket = io({
+    autoConnect: false,
+    withCredentials: true,
+});
 window.addEventListener("DOMContentLoaded", () => {
     const game = new Game(socket);
     game.start();

@@ -15,12 +15,8 @@ export class Play extends ex.Scene {
     }
 
     onInitialize(game: Game): void {
-        game.socket.on("connect", () => {
-            console.log("connected to server.");
-
-            game.socket.emitWithAck("setupPlayer", window.innerWidth, window.innerHeight, /* user input when ready */ Player.DEFAULT_USERNAME).then((player) => this.addPlayer(game.socket.id!, player));   
-            game.socket.emitWithAck("retrievePlayers").then((otherPlayers) => Object.entries(otherPlayers).filter(([id]) => id !== game.socket.id).forEach(([id, player]) => this.addPlayer(id, player)));
-        });
+        game.socket.emitWithAck("setupPlayer", window.innerWidth, window.innerHeight, /* user input when ready */ Player.DEFAULT_USERNAME).then((player) => this.addPlayer(game.socket.id!, player));   
+        game.socket.emitWithAck("retrievePlayers").then((otherPlayers) => Object.entries(otherPlayers).filter(([id]) => id !== game.socket.id).forEach(([id, player]) => this.addPlayer(id, player)));
 
         game.socket.on("createPlayer", this.addPlayer.bind(this));
         game.socket.on("deletePlayer", this.removePlayer.bind(this));

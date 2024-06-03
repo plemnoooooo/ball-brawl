@@ -8,7 +8,7 @@ import Game from "./Game";
 eruda.init();
 
 window.addEventListener("DOMContentLoaded", () => {
-    const socket = io(import.meta.env.DEV ? "": SERVER.URL);
+    const socket = io(); // io(import.meta.env.DEV ? "": SERVER.URL);
 
     socket.on("connect", () => {
         console.log("connected to server.");

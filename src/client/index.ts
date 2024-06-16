@@ -7,7 +7,7 @@ eruda.init();
 
 window.addEventListener("DOMContentLoaded", () => {
     const socket = io();
-
+    
     socket.on("connect", () => {
         console.log("connected to server.");
 

@@ -1,7 +1,7 @@
 import * as ex from "excalibur";
 import { SERVER, TILE } from "../../global/constants";
 import { Ball as BallData, Player as PlayerData } from "../../global/types";
-import { Grid } from "../../global/utils";
+import { Grid, Random } from "../../global/utils";
 
 import { Ball, Map as MapActor, Player } from "../actors";
 import Game from "../Game";
@@ -12,47 +12,77 @@ export class Play extends ex.Scene {
 
     players: Map<string, Player>;
     balls: Map<string, Ball>;
-    map: MapActor;
+    map!: MapActor;
 
     private currentPlayer!: Player;
     private playerUpdate: Partial<PlayerData>;
+    private thrownButton!: ex.ScreenElement;
 
     constructor() {
         super();
         
         this.players = new Map();
         this.balls = new Map();
-        this.map = new MapActor(Grid.fromTiles([[0]]));
         
         this.playerUpdate = {};
     }
 
-    onInitialize(game: Game): void {
-        this.currentPlayer = new Player();
-        this.currentPlayer.on("collisionstart", ({ other }) => {
-            if (!other.hasTag(Ball.TAG_NAME)) return;
-
-            const [id, ball] = Array.from(this.balls.entries()).find(([_, { id }]) => id === other.id)!; 
-            this.currentPlayer.collectedBalls.push(id);
-            ball.collect();
-
-            game.socket.emit("collectBall", id);
+    onInitialize(game: Game) {
+        this.thrownButton = new ex.ScreenElement({
+            x: game.halfDrawWidth,
+            y: game.drawHeight - 80,
+            radius: 40,
+            color: ex.Color.Gray
         });
 
-        this.camera.addStrategy(new ex.LockCameraToActorStrategy(this.currentPlayer));
+        this.thrownButton.on("pointerdown", () => {
+            const id = this.currentPlayer.collectedBalls.splice(Random.number(this.currentPlayer.collectedBalls.length))[0];
+            if (!id) return;
 
-        this.add(this.currentPlayer);
-        this.add(this.map);
+            this.currentPlayer.thrownBalls.push(id);
+            
+            const { x, y } = this.currentPlayer.pos.clone().scale(ex.vec(1 / TILE.WIDTH, 1 / TILE.HEIGHT));
+            this.addBall(id, {
+                x,
+                y,
+
+                isProjectile: true,
+                direction: Random.number(2 * Math.PI, 0, false),
+                startSpeed: Ball.THROW_SPEED
+            });
+        });
+    
+        this.add(this.thrownButton);
         
         game.socket.emitWithAck("retrieveData").then(({ players, balls, map }) => {
             Object.entries(players).filter(([id]) => id !== game.socket.id!).forEach(([id, player]) => this.addPlayer(id, player));
             Object.entries(balls).forEach(([id, ball]) => this.addBall(id, ball));
 
             const tiles = Grid.fromTiles(map);
-            this.map.setMap(tiles);
+            this.map = new MapActor(tiles);
+            this.add(this.map);
         });
 
-        game.socket.emitWithAck("setupPlayer", /* user input when ready */ Player.DEFAULT_USERNAME).then((player) => this.currentPlayer.deserialize(player));
+        game.socket.emitWithAck("setupPlayer", /* user input when ready */ Player.DEFAULT_USERNAME).then(({ x, y, username }) => {
+            this.currentPlayer = new Player(username);
+            this.currentPlayer.pos.setTo(x, y);
+            this.currentPlayer.on("collisionstart", ({ other }) => {
+                if (!other.hasTag(Ball.TAG_NAME)) return;
+
+                const balls = Array.from(this.balls.entries());
+                const id = balls.find(([_, { id }]) => id === other.id)![0];
+                if (!id || this.currentPlayer.thrownBalls.includes(id)) return;
+
+                this.currentPlayer.collectedBalls.push(id);
+                this.removeBall(id);
+
+                game.socket.emit("collectBall", id);
+            })
+            
+            this.camera.addStrategy(new ex.LockCameraToActorStrategy(this.currentPlayer));
+
+            this.add(this.currentPlayer);
+        });
 
         game.socket.on("update", (snapshot) => game.SI.snapshot.add(snapshot));
 
@@ -67,6 +97,8 @@ export class Play extends ex.Scene {
     }
 
     update(game: Game, delta: number) {
+        
+        
         const playerSnapshot = game.SI.calcInterpolation("x y", "players");
         playerSnapshot && playerSnapshot.state.forEach(({ id, x, y, username }) => {
             if (id === game.socket.id) return;
@@ -83,7 +115,7 @@ export class Play extends ex.Scene {
             this.balls.get(id)?.deserialize(Object.assign({
                 x: x as number,
                 y: y as number,
-            }, this.currentPlayer.collectedBalls.concat(this.currentPlayer.thrownBalls).includes(id) ? {
+            }, this.currentPlayer.thrownBalls.includes(id) ? {
                 direction: direction as number, 
                 startSpeed: startSpeed as number
             } : {
@@ -94,8 +126,12 @@ export class Play extends ex.Scene {
 
         const calculatedDelta = delta / (1000 / SERVER.TICK_RATE);
 
-        let { x, y } = ((!this.keysDown && this.input.pointers.isDown(0)) ? this.input.pointers.primary.lastScreenPos.sub(ex.vec(game.halfDrawWidth, game.halfDrawHeight)) : this.getMovementFromKey()).clampMagnitude(1).scaleEqual(Player.MAX_SPEED * calculatedDelta).add(this.currentPlayer.pos);
-        this.playerUpdate = { ...this.playerUpdate, x, y };
+        this.currentPlayer.vel = ((!this.keysDown && this.input.pointers.isDown(ex.NativePointerButton.Left)) ? this.input.pointers.primary.lastScreenPos.sub(ex.vec(game.halfDrawWidth, game.halfDrawHeight)) : this.getMovementFromKey()).clampMagnitude(1).scaleEqual(Player.MOVE_SPEED * calculatedDelta);
+        this.playerUpdate = {
+            ...this.playerUpdate,
+            x: this.currentPlayer.pos.x,
+            y: this.currentPlayer.pos.y
+        };
         
         this.currentPlayer.deserialize(this.playerUpdate);
         game.socket.emit("updatePlayer", this.playerUpdate);
@@ -111,8 +147,7 @@ export class Play extends ex.Scene {
 
     private addPlayer(id: string, { x, y, username }: PlayerData) {
         const player = new Player(username);
-        [x, y] = this.map.offsetVectorByBorder([x, y]);
-        player.pos.setTo(x + TILE.WIDTH, y + TILE.HEIGHT);
+        player.pos.setTo(x * TILE.WIDTH, y * TILE.HEIGHT);
 
         this.players.set(id, player);
         this.add(player);
@@ -123,10 +158,9 @@ export class Play extends ex.Scene {
         this.players.delete(id);
     }
 
-    private addBall(id: string, { x, y, isProjectile, direction, hidden, startSpeed }: BallData) {
-        const ball = new Ball(isProjectile, direction, startSpeed, hidden);
-        [x, y] = this.map.offsetVectorByBorder([x, y]);
-        ball.pos.setTo(x, y);
+    private addBall(id: string, { x, y, isProjectile, direction, startSpeed }: BallData) {
+        const ball = new Ball(isProjectile, direction, startSpeed);
+        ball.pos.setTo(x * TILE.WIDTH, y * TILE.HEIGHT);
 
         this.balls.set(id, ball);
         this.add(ball);

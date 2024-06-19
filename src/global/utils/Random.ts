@@ -5,8 +5,11 @@ export class Random {
         return isInt ? Math.floor(n) : n;
     }
 
-    static select(i: any[] | Record<any, any>, times: number = 1): any[] {
-        return Array(times).fill(null).map(() => Array.isArray(i) ? i[this.number(i.length)] : i[this.select(Object.keys(i))[0]]);
+    static select<T>(i: T[] | Record<any, T>, times?: 1): T;
+    static select<T>(i: T[] | Record<any, T>, times?: number): T[];
+    static select<T>(i: T[] | Record<any, T>, times: number = 1): T | T[] {
+        const result = Array(times).fill(null).map(() => Array.isArray(i) ? i[this.number(i.length)] : i[this.select(Object.keys(i))]);
+        return (times === 1) ? result[0] : result;
     }
 
     static generateBase64(length: number = 8) {

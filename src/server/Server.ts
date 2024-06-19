@@ -4,10 +4,10 @@ import { State } from "@geckos.io/snapshot-interpolation/lib/types";
 
 import { BALL, MAP, SERVER, TILE } from "../global/constants";
 import { Player, Ball, Vector, Events } from "../global/types";
-import { findAverage, isNumberInRange } from "../global/utils";
+import { findAverage, isNumberInRange, Random } from "../global/utils";
 
 import { Io } from "./types";
-import { Perlin, Random } from "./utils";
+import { Perlin } from "./utils"; 
 
 export default class Server {
     static readonly CREATE_BALL_PERIOD_LENGTH = 8;
@@ -49,6 +49,8 @@ export default class Server {
 
         socket.on("disconnect", () => {
             socket.broadcast.emit("deletePlayer", socket.id);
+
+            this.players.get(socket.id)!.thrownBalls.forEach((id) => this.balls.delete(id));
             this.players.delete(socket.id);
         });
 
@@ -78,45 +80,50 @@ export default class Server {
         socket.on("updatePlayer", (player) => this.players.set(socket.id, { ...this.players.get(socket.id)!, ...player }));
 
         socket.on("collectBall", (id) => {
-            this.balls.get(id)!.hidden = true;
+            this.balls.delete(id);
             player.collectedBalls.push(id);
         });
 
-        socket.on("throwBall", (direction) => {
-            let ball = this.balls.get(Random.select(player.collectedBalls)[0])!;
-            ball = {
-                ...ball,
-
-                hidden: false,
-                isProjectile: true,
-                
+        socket.on("throwBall", (id, direction, startSpeed = BALL.START_SPEED) => {
+            const ball = {
+                x: player.x,
+                y: player.y,
+            
+                isProjectile: true, 
                 direction,
-                startSpeed: BALL.START_SPEED
+                startSpeed
             };
+
+            this.balls.set(id, ball);
         });
 
-        socket.on("hitByBall", (id, callback) => {
-            let ball = this.balls.get(id)!;
+        socket.on("hitByBall", (hitBallId, dispersedBalls) => {
+            let ball = this.balls.get(hitBallId)!;
             ball = {
                 ...ball,
                 isProjectile: false,
                 startSpeed: 0
             };
+            
+            const thrower = Array.from(this.players.entries()).find(([_, { collectedBalls }]) => collectedBalls.includes(hitBallId))![1];
+            thrower.collectedBalls.splice(thrower.collectedBalls.findIndex((id) => id === hitBallId), 1);
 
-            const dispersedBalls: string[] = Random.select(player.collectedBalls, Random.number(BALL.DISPERSE.MAX, BALL.DISPERSE.MIN));
-            dispersedBalls.forEach((id) => {
-                let ball = this.balls.get(id)!;
-                ball = {
-                    ...ball,
-                    hidden: false,
+            Object.entries(dispersedBalls).forEach(([id, { direction, startSpeed }]) => {
+                direction ??= 0;
+                startSpeed ??= BALL.START_SPEED;
 
-                    direction: Random.number(2 * Math.PI, 0, false),
-                    startSpeed: Random.number(BALL.DISPERSE.RANGE.MIN, BALL.DISPERSE.RANGE.MAX, false)
+                const ball: Ball = {
+                    x: player.x,
+                    y: player.y,
+
+                    isProjectile: false,
+                    direction,
+                    startSpeed
                 };
-            })
 
-            player.collectedBalls = player.collectedBalls.filter((id) => !dispersedBalls.includes(id));
-            callback(dispersedBalls);
+                this.balls.set(id, ball);
+                player.collectedBalls.splice(player.collectedBalls.findIndex((ballId) => ballId === id), 1);
+            });
         });
     }
 
@@ -138,8 +145,6 @@ export default class Server {
         this.balls.forEach((ball, id) => ballsState.push({
             ...ball,
             id,
-
-            hidden: +ball.hidden,
             isProjectile: +ball.isProjectile
         }));
 
@@ -156,9 +161,7 @@ export default class Server {
             x,
             y,
 
-            hidden: false,
             isProjectile: false,
-
             direction: 0,
             startSpeed: 0
         };

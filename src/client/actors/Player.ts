@@ -7,7 +7,7 @@ export class Player extends ex.Actor {
     static readonly DEFAULT_COLOR = ex.Color.Red;
     static readonly DEFAULT_USERNAME = "Player";
 
-    static readonly MAX_SPEED = 6;
+    static readonly MOVE_SPEED = 180;
     
     collectedBalls: string[];
     thrownBalls: string[];

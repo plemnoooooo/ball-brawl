@@ -1,6 +1,5 @@
 import { Vector } from "../../global/types";
-import { Grid } from "../../global/utils";
-import { Random } from ".";
+import { Grid, Random } from "../../global/utils";
 
 // perlin noise generator from https://github.com/joeiddon/perlin
 export class Perlin {

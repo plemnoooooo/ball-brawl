@@ -22,7 +22,8 @@ export interface Socket {
     updatePlayer(player: Partial<Player>): void;
     
     collectBall(id: string): void;
-    throwBall(direction: number): void;
-    hitByBall(id: string, callback: (balls: string[]) => void): void;
+    throwBall(id: string, direction: number): void;
+    hitByBall(balls: Record<string, Omit<Omit<Ball, "isProjectile">, "owner">>): void;
+
     updateBall(id: string, ball: Partial<Ball>): void;
 }

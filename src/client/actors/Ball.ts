@@ -5,18 +5,23 @@ import { Map } from "./Map";
 
 export class Ball extends ex.Actor {
     static readonly TAG_NAME = "ball";
-    static readonly DEFAULT_RADIUS = 5;
+    static readonly DEFAULT_RADIUS = 8;
     static readonly DEFAULT_COLOR = ex.Color.Yellow;
 
-    static readonly THROW_SPEED = 240;
-    static readonly SPEED_DECREASE = 0;
+    static readonly SPEED_DECREASE = 0.4;
+    static readonly MIN_PROJECTILE_SPEED = 120;
 
-    private speed: number;
+    static readonly DISPERSE_AMOUNT_MIN = 3;
+    static readonly DISPERSE_AMOUNT_MAX = 8;
+    static readonly DISPERSE_SPEED_MIN = 40;
+    static readonly DISPERSE_SPEED_MAX = 80;
+
+    speed: number;
     
-    constructor(private isProjectile: boolean = false, private direction: number = 0, private startSpeed: number = 0) {
+    constructor(public isProjectile: boolean = false, public owner: string, private direction: number = 0, private startSpeed: number = 0) {
         super({
             radius: Ball.DEFAULT_RADIUS,
-            collisionType: isProjectile ? ex.CollisionType.Active : ex.CollisionType.Passive
+            collisionType: ex.CollisionType.Passive
         });
 
         this.speed = startSpeed;
@@ -28,28 +33,18 @@ export class Ball extends ex.Actor {
 
         this.on("collisionstart", ({ other, side }) => {
             if (!other.hasTag(Map.TAG_NAME)) return;
-            this.vel.x *= +[ex.Side.Top, ex.Side.Bottom].includes(side) || -1;
-            this.vel.y *= +[ex.Side.Left, ex.Side.Right].includes(side) || -1;
-            // this.direction = this.vel.toAngle();
-
-            console.log(this.direction);
-            // this.direction += Math.PI / 2; //  -this.direction + ((Math.PI / 2) * +[ex.Side.Top, ex.Side.Bottom].includes(side));
+            this.direction += [ex.Side.Left, ex.Side.Right].includes(side) ? Math.PI - (((this.direction) % Math.PI) * 2) : -this.direction * 2;
         }); 
     }
 
     update(game: Game, delta: number) {
         super.update(game, delta);
 
-        if (!this.isProjectile) return;
-        // this.vel.x = Math.cos(this.direction) * this.speed;
-        // this.vel.y = Math.sin(this.direction) * this.speed;
-        // = ex.Vector.fromAngle(this.direction).scaleEqual(this.speed);
-        Math.abs(this.speed) ? this.vel.subEqual(Ball.SPEED_DECREASE * +((this.speed > 0) || -1)) : this.isProjectile = false;
-    }
+        this.vel = ex.Vector.fromAngle(this.direction).scaleEqual(this.speed);
+        (this.speed > 0) ? this.speed -= Ball.SPEED_DECREASE : this.speed = 0;
 
-    set thisProjectile(newThisProjectile: boolean) {
-        this.isProjectile = newThisProjectile;
-        this.body.collisionType = newThisProjectile ? ex.CollisionType.Active : ex.CollisionType.Passive;
+        if (this.speed > Ball.MIN_PROJECTILE_SPEED) return;
+        this.isProjectile = false;
     }
 
     serialize(): BallData {
@@ -58,17 +53,18 @@ export class Ball extends ex.Actor {
             y: this.pos.y,
 
             isProjectile: this.isProjectile,
+            owner: this.owner,
             direction: this.direction,
             startSpeed: this.startSpeed
         };
     }
 
-    deserialize({ x, y, isProjectile, direction, startSpeed }: Partial<BallData>) {
+    deserialize({ x, y, isProjectile, owner, direction, startSpeed }: Partial<BallData>) {
         this.pos.setTo(x || this.pos.x, y || this.pos.y);
 
         if (isProjectile) this.isProjectile = isProjectile;      
+        if (owner) this.owner = owner;
         if (direction) this.direction = direction;
-        if (isProjectile) this.vel = ex.Vector.One// ex.Vector.fromAngle(direction!).scaleEqual(Ball.THROW_SPEED!);
         if (startSpeed) this.speed = startSpeed;
     }
 }

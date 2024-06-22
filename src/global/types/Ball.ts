@@ -3,6 +3,7 @@ export interface Ball {
     y: number;
     
     isProjectile: boolean;
+    owner: string;
     direction: number;
     startSpeed: number;
 }

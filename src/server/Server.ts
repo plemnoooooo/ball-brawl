@@ -10,7 +10,7 @@ import { Io } from "./types";
 import { Perlin } from "./utils"; 
 
 export default class Server {
-    static readonly CREATE_BALL_PERIOD_LENGTH = 8;
+    static readonly CREATE_BALL_TICKS = 1;
     static readonly MAX_BALL_LIMIT = 80;
 
     private players: Map<string, Player> = new Map();
@@ -34,7 +34,22 @@ export default class Server {
     update() {
         this.tick++;
 
-        (!this.isTickInPeriod(Server.CREATE_BALL_PERIOD_LENGTH) && (Array(this.balls.keys()).length < Server.MAX_BALL_LIMIT)) && this.createBall();
+        if (!this.isTickInPeriod(Server.CREATE_BALL_TICKS) && (Array.from(this.balls.keys()).length < Server.MAX_BALL_LIMIT)) {
+            const id = Random.generateBase64();
+            const [x, y] = this.getRandomVector();
+            const ball: Ball = {
+                x,
+                y,
+
+                isProjectile: false,
+                owner: "",
+                direction: 0,
+                startSpeed: 0
+            };
+
+            this.balls.set(id, ball);
+            this.io.emit("createBall", id, ball);
+        }
 
         const worldState = this.getWorldState();
 
@@ -50,8 +65,13 @@ export default class Server {
         socket.on("disconnect", () => {
             socket.broadcast.emit("deletePlayer", socket.id);
 
-            this.players.get(socket.id)!.thrownBalls.forEach((id) => this.balls.delete(id));
             this.players.delete(socket.id);
+            Array.from(this.balls.entries()).filter(([_, { owner }]) => owner === socket.id).forEach(([id]) => {
+                const ball = this.balls.get(id);
+                
+                if (!ball) return;
+                ball.owner = "";
+            });
         });
 
         socket.on("retrieveData", (callback) => callback({
@@ -66,8 +86,8 @@ export default class Server {
                 x,
                 y,
                 username,
-                collectedBalls: [],
-                thrownBalls: []
+                stunned: false,
+                collectedBalls: []
             };
 
             player = createdPlayer;
@@ -77,52 +97,44 @@ export default class Server {
             socket.broadcast.emit("createPlayer", socket.id, player);
         });
 
-        socket.on("updatePlayer", (player) => this.players.set(socket.id, { ...this.players.get(socket.id)!, ...player }));
+        socket.on("updatePlayer", (playerData) => this.players.set(socket.id, { ...player, ...playerData }));
+        socket.on("updateBall", (id, ball) => this.balls.set(id, { ...this.balls.get(id)!, ...ball }));
 
         socket.on("collectBall", (id) => {
             this.balls.delete(id);
-            player.collectedBalls.push(id);
+            socket.broadcast.emit("deleteBall", id);
         });
 
-        socket.on("throwBall", (id, direction, startSpeed = BALL.START_SPEED) => {
-            const ball = {
-                x: player.x,
-                y: player.y,
+        socket.on("throwBall", (id, direction) => {
+            const { x, y } = player;
+            const ball: Ball = {
+                x,
+                y,
             
                 isProjectile: true, 
+                owner: socket.id,
                 direction,
-                startSpeed
+                startSpeed: BALL.THROW_SPEED
             };
 
             this.balls.set(id, ball);
+            socket.broadcast.emit("createBall", id, ball);
         });
 
-        socket.on("hitByBall", (hitBallId, dispersedBalls) => {
-            let ball = this.balls.get(hitBallId)!;
-            ball = {
-                ...ball,
-                isProjectile: false,
-                startSpeed: 0
-            };
-            
-            const thrower = Array.from(this.players.entries()).find(([_, { collectedBalls }]) => collectedBalls.includes(hitBallId))![1];
-            thrower.collectedBalls.splice(thrower.collectedBalls.findIndex((id) => id === hitBallId), 1);
-
-            Object.entries(dispersedBalls).forEach(([id, { direction, startSpeed }]) => {
-                direction ??= 0;
-                startSpeed ??= BALL.START_SPEED;
-
+        socket.on("hitByBall", (dispersedBalls) => {
+            Object.entries(dispersedBalls).forEach(([id, { x, y, direction, startSpeed }]) => {
                 const ball: Ball = {
-                    x: player.x,
-                    y: player.y,
+                    x,
+                    y,
 
                     isProjectile: false,
+                    owner: socket.id,
                     direction,
                     startSpeed
                 };
 
                 this.balls.set(id, ball);
-                player.collectedBalls.splice(player.collectedBalls.findIndex((ballId) => ballId === id), 1);
+                socket.broadcast.emit("createBall", id, ball);
             });
         });
     }
@@ -136,9 +148,8 @@ export default class Server {
         this.players.forEach((player, id) => playersState.push({
             ...player,
             id,
-
-            collectedBalls: player.collectedBalls.toString(),
-            thrownBalls: player.thrownBalls.toString()
+            collectedBalls: player.collectedBalls?.toString() || "",
+            stunned: +player.stunned
         }));
 
         const ballsState: State = [];
@@ -152,22 +163,6 @@ export default class Server {
             players: playersState,
             balls: ballsState
         };
-    }
-
-    private createBall() {
-        const id = Random.generateBase64();
-        const [x, y] = this.getRandomVector();
-        const ball: Ball = {
-            x,
-            y,
-
-            isProjectile: false,
-            direction: 0,
-            startSpeed: 0
-        };
-
-        this.balls.set(id, ball);
-        this.io.emit("createBall", id, ball);
     }
 
     private getRandomVector(noCollisionWithTiles: boolean = true): Vector {

@@ -17,7 +17,6 @@ export default class Game extends ex.Engine {
         });
         
         this.SI = new SnapshotInterpolation(SERVER.IO_EMIT_RATE);
-        this.showDebug(true);
     }
 
     start() {

@@ -3,4 +3,6 @@ export interface Tile {
     y: number;
     width: number;
     height: number;
+    ax: number;
+    ay: number;
 }

@@ -1,7 +1,7 @@
 import * as ex from "excalibur";
 import { TILE } from "../../global/constants";
 import { Grid, findAverage, isNumberInRange } from "../../global/utils";
-import { Collider, Tile } from "../types";
+import { Tile } from "../types";
 
 export class Map extends ex.Actor {
     static readonly TAG_NAME = "map";
@@ -9,6 +9,7 @@ export class Map extends ex.Actor {
     
     static readonly BORDER_WIDTH = 100;
     static readonly BORDER_HEIGHT = 100;
+    static readonly COLLIDER_THICKNESS = 0.01;
 
     public mapWidth: number;
     public mapHeight: number;
@@ -20,6 +21,7 @@ export class Map extends ex.Actor {
 
     constructor(public tiles: Grid<number>) {
         super({
+            z: -999,
             scale: ex.vec(TILE.WIDTH, TILE.HEIGHT),
             anchor: ex.Vector.Zero,
             collisionType: ex.CollisionType.Fixed
@@ -40,7 +42,7 @@ export class Map extends ex.Actor {
 
         this.graphics.onPostDraw = (ctx) => {
             for (const { x, y, width, height } of this.renderQueue) {
-                ctx.drawRectangle(ex.vec(x, y), width, height + (1 / TILE.HEIGHT), Map.TILE_COLOR);
+                ctx.drawRectangle(ex.vec(x, y), width + (1 / TILE.WIDTH), height + (1 / TILE.HEIGHT), Map.TILE_COLOR);
             }
         }
     }
@@ -66,8 +68,7 @@ export class Map extends ex.Actor {
         }));
         
         this.renderQueue = [];
-        const horizontalColliders: Collider[] = [];
-        const verticalColliders: Collider[] = [];
+        const colliders: Tile[] = [];
 
         this.tiles.forEach((v, x, y, joinTile) => {
             joinTile = this.isNumberInTileRange(v);
@@ -77,99 +78,134 @@ export class Map extends ex.Actor {
                 x,
                 y,
                 width: 0,
-                height: 1
+                height: 1,
+                ax: 0,
+                ay: 0
             });
             
             this.renderQueue.slice(-1)[0].width++;
 
-            if (!this.tiles.getAdjacentTiles(x, y).slice(2).reduce((result, tile) => result || this.isNumberInTileRange(tile), false)) return;
-                const collider = horizontalColliders.find(({
+            const { up, down, left, right } = this.tiles.getAdjacentTiles(x, y);
+            if ((up !== undefined) && this.isNumberInTileRange(up)) {
+                const collider = colliders.find(({
                     x: cx,
                     y: cy,
-                    width
-                }) => (cx === (x - width)) && (cy === y));
-                
-                collider ? collider.width++ : horizontalColliders.push({
+                    width,
+                    ay
+                }) => (cx === (x - width)) && (cy === y) && !ay);
+
+                collider ? collider.width++ : colliders.push({
                     x,
                     y,
                     width: 1,
-                    height: 0.01,
-                    anchor: [0, +this.isNumberInTileRange(this.tiles.get(x, y + 1))]
+                    height: Map.COLLIDER_THICKNESS,
+                    ax: 0,
+                    ay: 0
                 });
+            }
+
+            if ((down !== undefined) && this.isNumberInTileRange(down)) {
+                const collider = colliders.find(({
+                    x: cx,
+                    y: cy,
+                    width,
+                    ay
+                }) => (cx === (x - width)) && (cy === y) && ay);
+
+                collider ? collider.width++ : colliders.push({
+                    x,
+                    y,
+                    width: 1,
+                    height: Map.COLLIDER_THICKNESS,
+                    ax: 0,
+                    ay: 1
+                });
+            }
+
+            if ((left !== undefined) && this.isNumberInTileRange(left)) {
+                const collider = colliders.find(({
+                    x: cx,
+                    y: cy,
+                    height,
+                    ax
+                }) => (cx === x) && (cy === (y - height)) && !ax);
+
+                collider ? collider.height++ : colliders.push({
+                    x,
+                    y,
+                    width: Map.COLLIDER_THICKNESS,
+                    height: 1,
+                    ax: 0,
+                    ay: 0
+                });
+            }
+
+            if ((right !== undefined) && this.isNumberInTileRange(right)) {
+                const collider = colliders.find(({
+                    x: cx,
+                    y: cy,
+                    height,
+                    ax
+                }) => (cx === x) && (cy === (y - height)) && ax);
+
+                collider ? collider.height++ : colliders.push({
+                    x,
+                    y,
+                    width: Map.COLLIDER_THICKNESS,
+                    height: 1,
+                    ax: 1,
+                    ay: 0
+                });
+            }
         }, (a, y) => {
-            const x = a.findIndex((v) => !this.isNumberInTileRange(v));
             this.renderQueue.push({
-                x,
+                x: a.findIndex((v) => !this.isNumberInTileRange(v)),
                 y,
                 width: 0,
-                height: 1
+                height: 1,
+                ax: 0,
+                ay: 0
             });
-
-            // horizontalColliders.push({
-            //     x,
-            //     y,
-            //     width: 0,
-            //     height: 0.01,
-            //     anchor: [0, +this.isNumberInTileRange(this.tiles.get(x, y + 1))]
-            // });
 
             return false;
         });
 
-        this.tiles.getRow(0).forEach((_, x) => {
-            this.tiles.getColumn(x).forEach((v, y) => {
-                if (this.isNumberInTileRange(v)) return;
-                
-                if (!this.tiles.getAdjacentTiles(x, y).slice(0, 2).reduce((result, tile) => result || this.isNumberInTileRange(tile), false)) return;
-                const collider = verticalColliders.find(({
-                    x: cx,
-                    y: cy,
-                    height,
-                }) => (cx === x) && (cy === (y - height)));
-                
-                collider ? collider.height++ : verticalColliders.push({
-                    x,
-                    y,
-                    width: 0.01,
-                    height: 1,
-                    anchor: [+this.isNumberInTileRange(this.tiles.get(x + 1, y)), 0]
-                });
-            });
-        });
-
-        const colliders = horizontalColliders.concat(verticalColliders);
         if (createBorders) {
-            const borders: Collider[] = [{
+            const borders: Tile[] = [{
                 x: -Map.BORDER_WIDTH,
                 y: -Map.BORDER_HEIGHT,
                 width: this.mapWidth + (2 * Map.BORDER_WIDTH),
                 height: Map.BORDER_HEIGHT,
-                anchor: [0, 0]
+                ax: 0,
+                ay: 0
             }, {
                 x: -Map.BORDER_WIDTH,
                 y: this.mapHeight,
                 width: this.mapWidth + (2 * Map.BORDER_WIDTH),
                 height: Map.BORDER_HEIGHT,
-                anchor: [0, 0]
+                ax: 0,
+                ay: 0
             }, {
                 x: -Map.BORDER_WIDTH,
                 y: -Map.BORDER_HEIGHT,
                 width: Map.BORDER_WIDTH,
                 height: this.mapHeight + (2 * Map.BORDER_HEIGHT),
-                anchor: [0, 0]
+                ax: 0,
+                ay: 0
             }, {
                 x: this.mapWidth,
                 y: -Map.BORDER_HEIGHT,
                 width: Map.BORDER_WIDTH,
                 height: this.mapHeight + (2 * Map.BORDER_HEIGHT),
-                anchor: [0, 0]
+                ax: 0,
+                ay: 0
             }];
 
             this.renderQueue.push(...borders);
             colliders.push(...borders);
         }  
 
-        this.collider.useCompositeCollider(colliders.map(({ x, y, width, height, anchor: [mx, my] }) => ex.Shape.Box(width, height, ex.Vector.Zero, ex.vec(x + mx, y + my))));
+        this.collider.useCompositeCollider(colliders.map(({ x, y, width, height, ax, ay }) => ex.Shape.Box(width, height, ex.Vector.Zero, ex.vec(x + ax - (Map.COLLIDER_THICKNESS * +!!ax), y + ay - (Map.COLLIDER_THICKNESS * +!!ay)))));
     }
 
     isNumberInTileRange(v: number) {

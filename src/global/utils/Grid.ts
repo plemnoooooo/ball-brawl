@@ -1,4 +1,4 @@
-import { Vector } from "../types";
+import { Direction, Vector } from "../types";
 import { isNumberInRange } from ".";
 
 export class Grid<T> {
@@ -24,11 +24,11 @@ export class Grid<T> {
         }, [] as T[]);
     }
 
-    getSection(x: number, y: number, width: number, height: number): Grid<T> {
-        if (((x + width) < 0) || ((y + height) < 0)) return Grid.fromTiles([]);
+    getSection(x: number, y: number, width: number, height: number): Grid<T> | undefined {
+        if ((x > (this.width - 1)) || (y > (this.height - 1))) return;
+
         const [cx, cy] = this.clampToGrid(x, y);
-        
-        const section = new Grid<T>(Math.min(width, (x >= 0) ? this.width - cx : Math.abs(x + width)), Math.min(height, (y >= 0) ? this.height - cy : Math.abs(y + height)));
+        const section = new Grid<T>(Math.min(width, Math.abs(x + width)), Math.min(height, Math.abs(y + height)));
         for (let i = 0; i < section.height; i++) {
             for (let j = 0; j < section.width; j++) {
                 section.set(this.get(cx + j, cy + i), j, i);
@@ -38,16 +38,36 @@ export class Grid<T> {
         return section;
     }
 
-    getAdjacentTiles(x: number, y: number): T[] {
-        const result: T[] = [];
+    getAdjacentTiles(x: number, y: number, rejectOutOfBoundsTiles: boolean = true): Partial<Direction<T>> {
+        const result: Partial<Direction<T>> = {};
         if (!isNumberInRange(x, 0, this.width - 1) || !isNumberInRange(y, 0, this.height - 1)) return result;
         
         const section = this.getSection(x - 1, y - 1, 3, 3);
+        if (!section) return {};
         
-        x && result.push(section.get(0, (section.height === 3) ? 1 : +!!y));
-        (x < (this.width - 1)) && result.push(section.get(2, (section.height === 3) ? 1 : +!!y));
-        y && result.push(section.get((section.width === 3) ? 1 : +!!x, 0));
-        (y < (this.height - 1)) && result.push(section.get((section.width === 3) ? 1 : +!!(x > 0), 2));
+        result.left = x
+            ? section.get(0, +!!y)
+            : rejectOutOfBoundsTiles
+                ? undefined
+                : this.get(x, y);
+
+        result.right = (x < (this.width - 1))
+            ? section.get(2, +!!y)
+            : rejectOutOfBoundsTiles
+                ? undefined
+                : this.get(x, y);
+
+        result.up = y
+            ? section.get(+!!x, 0)
+            : rejectOutOfBoundsTiles
+                ? undefined
+                : this.get(x, y);
+
+        result.down = (y < (this.height - 1))
+            ? section.get(+!!x, 2)
+            : rejectOutOfBoundsTiles 
+                ? undefined
+                : this.get(x, y);
 
         return result;
     }
@@ -103,6 +123,6 @@ export class Grid<T> {
     }
 
     static fromTiles<T>(tiles: T[][]) {
-        return new Grid(tiles[0]?.length, tiles.length, tiles);
+        return new Grid(tiles[0].length, tiles.length, tiles);
     }
 }

@@ -7,8 +7,19 @@ export class Random {
 
     static select<T>(i: T[] | Record<any, T>, times?: 1): T;
     static select<T>(i: T[] | Record<any, T>, times?: number): T[];
-    static select<T>(i: T[] | Record<any, T>, times: number = 1): T | T[] {
-        const result = Array(times).fill(null).map(() => Array.isArray(i) ? i[this.number(i.length)] : i[this.select(Object.keys(i))]);
+    static select<T>(i: T[] | Record<any, T>, times: number = 1, allUnique: boolean = true): T | T[] {
+        if (times < 0) return [];
+
+        const result: T[] = [];
+        for (const _ of Array(Math.min(times, Array.isArray(i) ? i.length : Object.keys(i).length)).keys()) {
+            let value: T;
+            do {
+                value = Array.isArray(i) ? i[Random.number(i.length)] : i[Random.select(Object.keys(i))];
+            } while (allUnique && result.includes(value));
+
+            result.push(value);
+        }
+
         return (times === 1) ? result[0] : result;
     }
 

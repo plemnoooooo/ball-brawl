@@ -3,5 +3,5 @@ export interface Player {
     y: number;
     username: string;
     collectedBalls: string[];
-    thrownBalls: string[];
+    stunned: boolean;
 }

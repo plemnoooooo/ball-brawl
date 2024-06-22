@@ -1,14 +1,18 @@
 import * as ex from "excalibur";
-import { SERVER, TILE } from "../../global/constants";
-import { Ball as BallData, Player as PlayerData } from "../../global/types";
-import { Grid, Random } from "../../global/utils";
+import { BALL, TILE } from "../../global/constants";
+import { Ball as BallData, Player as PlayerData, Vector } from "../../global/types";
+import { Grid, isNumberInRange, Random } from "../../global/utils";
 
 import { Ball, Map as MapActor, Player } from "../actors";
 import Game from "../Game";
 
 export class Play extends ex.Scene { 
+    static readonly RESOLVE_COLLISION_LOOPS = 8;
     static readonly KEYS = [ex.Keys.W, ex.Keys.S, ex.Keys.A, ex.Keys.D];
+    
     private keysDown: number = 0b0000;
+    private firstPointerPos!: ex.Vector;
+    private now!: number;
 
     players: Map<string, Player>;
     balls: Map<string, Ball>;
@@ -16,7 +20,7 @@ export class Play extends ex.Scene {
 
     private currentPlayer!: Player;
     private playerUpdate: Partial<PlayerData>;
-    private thrownButton!: ex.ScreenElement;
+    private throwButton!: ex.ScreenElement;
 
     constructor() {
         super();
@@ -28,31 +32,35 @@ export class Play extends ex.Scene {
     }
 
     onInitialize(game: Game) {
-        this.thrownButton = new ex.ScreenElement({
+        this.throwButton = new ex.ScreenElement({
             x: game.halfDrawWidth,
             y: game.drawHeight - 80,
+            z: 999,
+            anchor: ex.Vector.Half,
             radius: 40,
             color: ex.Color.Gray
         });
 
-        this.thrownButton.on("pointerdown", () => {
-            const id = this.currentPlayer.collectedBalls.splice(Random.number(this.currentPlayer.collectedBalls.length))[0];
+        this.throwButton.on("pointerdown", () => {
+            const id = this.currentPlayer?.collectedBalls.splice(Random.number(this.currentPlayer.collectedBalls.length), 1)[0];
             if (!id) return;
-
-            this.currentPlayer.thrownBalls.push(id);
             
             const { x, y } = this.currentPlayer.pos.clone().scale(ex.vec(1 / TILE.WIDTH, 1 / TILE.HEIGHT));
+            const direction = this.getVelocityFromPointer().toAngle();
             this.addBall(id, {
                 x,
                 y,
 
                 isProjectile: true,
-                direction: Random.number(2 * Math.PI, 0, false),
-                startSpeed: Ball.THROW_SPEED
+                owner: game.socket.id!,
+                direction,
+                startSpeed: BALL.THROW_SPEED
             });
+
+            game.socket.emit("throwBall", id, direction);
         });
-    
-        this.add(this.thrownButton);
+
+        this.add(this.throwButton);
         
         game.socket.emitWithAck("retrieveData").then(({ players, balls, map }) => {
             Object.entries(players).filter(([id]) => id !== game.socket.id!).forEach(([id, player]) => this.addPlayer(id, player));
@@ -63,21 +71,57 @@ export class Play extends ex.Scene {
             this.add(this.map);
         });
 
-        game.socket.emitWithAck("setupPlayer", /* user input when ready */ Player.DEFAULT_USERNAME).then(({ x, y, username }) => {
+        game.socket.emitWithAck("setupPlayer", /* user input when ready */ game.socket.id || Player.DEFAULT_USERNAME).then(({ x, y, username }) => {
             this.currentPlayer = new Player(username);
             this.currentPlayer.pos.setTo(x, y);
             this.currentPlayer.on("collisionstart", ({ other }) => {
-                if (!other.hasTag(Ball.TAG_NAME)) return;
+                if (!other.hasTag(Ball.TAG_NAME) || this.currentPlayer.stunned) return;
 
                 const balls = Array.from(this.balls.entries());
-                const id = balls.find(([_, { id }]) => id === other.id)![0];
-                if (!id || this.currentPlayer.thrownBalls.includes(id)) return;
+                const [id, ball] = balls.find(([_, { id }]) => id === other.id)!;
+                if (!id) return;
+
+                if (ball.isProjectile) {
+                    if (ball.owner === game.socket.id) return;
+                    
+                    this.currentPlayer.stunned = true;
+                    setTimeout(() => this.currentPlayer.stunned = false, Player.STUNNED_DURATION);
+
+                    const dispersedBalls = Random.select(this.currentPlayer.collectedBalls, Random.number(Ball.DISPERSE_AMOUNT_MAX, Ball.DISPERSE_AMOUNT_MIN)).reduce((balls, id) => {
+                        let { x, y } = this.currentPlayer.pos;
+                        x /= TILE.WIDTH;
+                        y /= TILE.HEIGHT;
+
+                        const ball: Omit<Omit<BallData, "isProjectile">, "owner"> = {
+                            x,
+                            y,
+
+                            direction: Random.number(2 * Math.PI, 0, false),
+                            startSpeed: Random.number(Ball.DISPERSE_SPEED_MAX, Ball.DISPERSE_SPEED_MIN)
+                        };
+
+                        this.addBall(id, {
+                            ...ball,
+                            isProjectile: false,
+                            owner: game.socket.id!
+                        });
+
+                        balls[id] = ball;
+                        this.currentPlayer.collectedBalls.splice(this.currentPlayer.collectedBalls.indexOf(id), 1);
+
+                        return balls;
+                    }, {} as Record<string, Omit<Omit<BallData, "isProjectile">, "owner">>);
+
+                    game.socket.emit("hitByBall", dispersedBalls);
+
+                    return;
+                }
 
                 this.currentPlayer.collectedBalls.push(id);
                 this.removeBall(id);
 
                 game.socket.emit("collectBall", id);
-            })
+            });
             
             this.camera.addStrategy(new ex.LockCameraToActorStrategy(this.currentPlayer));
 
@@ -92,57 +136,98 @@ export class Play extends ex.Scene {
         game.socket.on("createBall", this.addBall.bind(this));
         game.socket.on("deleteBall", this.removeBall.bind(this));
 
-        this.input.keyboard.on("press", ({ key }) => this.keysDown |= Math.floor(0b10 ** Play.KEYS.indexOf(key)));
-        this.input.keyboard.on("release", ({ key }) => this.keysDown ^= Math.floor(0b10 ** Play.KEYS.indexOf(key)));
+        this.input.keyboard.on("press", ({ key }) => {
+            if (key !== ex.Keys.Space) {
+                const i = Play.KEYS.indexOf(key);
+                this.keysDown ^= (i < 0) ? 0 : (0b10 ** i);
+
+                return;
+            }
+
+            const id = this.currentPlayer?.collectedBalls.splice(Random.number(this.currentPlayer.collectedBalls.length), 1)[0];
+            if (!id) return;
+            
+            const { x, y } = this.currentPlayer.pos.clone().scale(ex.vec(1 / TILE.WIDTH, 1 / TILE.HEIGHT));
+            const direction = this.getVelocityFromPointer().toAngle();
+            this.addBall(id, {
+                x,
+                y,
+
+                isProjectile: true,
+                owner: game.socket.id!,
+                direction,
+                startSpeed: BALL.THROW_SPEED
+            });
+
+            game.socket.emit("throwBall", id, direction);
+        });
+
+        this.input.keyboard.on("release", ({ key }) => {
+            const i = Play.KEYS.indexOf(key);
+            this.keysDown ^= (i < 0) ? 0 : (0b10 ** i);
+
+            return;
+        });
+
+        this.firstPointerPos = ex.vec(-1, -1);
+        this.input.pointers.primary.on("down", ({ screenPos: { x, y } }) => this.firstPointerPos.equals(ex.vec(-1, -1)) && this.firstPointerPos.setTo(x, y));
+        this.input.pointers.primary.on("up", () => this.firstPointerPos.setTo(-1, -1));
+
+        this.now = Date.now();
+        setInterval(() => this.gameUpdate(game), 0);
     }
 
-    update(game: Game, delta: number) {
+    gameUpdate(game: Game) {
+        const now = Date.now();
+        const delta = now - this.now;
         
-        
-        const playerSnapshot = game.SI.calcInterpolation("x y", "players");
-        playerSnapshot && playerSnapshot.state.forEach(({ id, x, y, username }) => {
-            if (id === game.socket.id) return;
+        super.update(game, delta);
+        this.now = now;
 
-            this.players.get(id)?.deserialize({
+        const playerSnapshot = game.SI.calcInterpolation("x y", "players");
+        playerSnapshot && playerSnapshot.state.forEach(({ id, x, y, username, stunned }) => {
+            (id !== game.socket.id) && this.players.get(id)?.deserialize({
                 x: x as number,
                 y: y as number,
-                username: username as string
+                username: username as string,
+                stunned: !!stunned
             });
         });
 
         const ballSnapshot = game.SI.calcInterpolation("x y", "balls");
-        ballSnapshot && ballSnapshot.state.forEach(({ id, x, y, hidden, isProjectile, direction, startSpeed }) => {
-            this.balls.get(id)?.deserialize(Object.assign({
+        ballSnapshot && ballSnapshot.state.forEach(({ id, x, y, isProjectile, owner }) => {
+            (owner !== game.socket.id) && this.balls.get(id)?.deserialize({
                 x: x as number,
                 y: y as number,
-            }, this.currentPlayer.thrownBalls.includes(id) ? {
-                direction: direction as number, 
-                startSpeed: startSpeed as number
-            } : {
-                hidden: !!hidden,
-                isProjectile: !!isProjectile
-            }));
+                isProjectile: !!isProjectile,
+                owner: owner as string
+            });
         });
 
-        const calculatedDelta = delta / (1000 / SERVER.TICK_RATE);
+        if (!this.currentPlayer) return;
 
-        this.currentPlayer.vel = ((!this.keysDown && this.input.pointers.isDown(ex.NativePointerButton.Left)) ? this.input.pointers.primary.lastScreenPos.sub(ex.vec(game.halfDrawWidth, game.halfDrawHeight)) : this.getMovementFromKey()).clampMagnitude(1).scaleEqual(Player.MOVE_SPEED * calculatedDelta);
-        this.playerUpdate = {
-            ...this.playerUpdate,
-            x: this.currentPlayer.pos.x,
-            y: this.currentPlayer.pos.y
-        };
+        const {
+            x: px,
+            y: py
+        } = this.firstPointerPos;
+        this.currentPlayer.vel = this.currentPlayer.stunned ? ex.Vector.Zero : ((!this.keysDown && this.input.pointers.isDown(ex.NativePointerButton.Left) && !this.throwButton.contains(px, py)) ? this.getVelocityFromPointer() : this.getVelocityFromKeys()).clampMagnitude(1).scaleEqual(Player.MOVE_SPEED);
+        
+        let { x, y, stunned } = this.currentPlayer.serialize();
+        if (!this.map.isNumberInTileRange(this.map.tiles.get(x / TILE.WIDTH, y / TILE.HEIGHT))) [x, y] = this.resolveMapCollision(x, y);
+        this.playerUpdate = { ...this.playerUpdate, x, y, stunned };
         
         this.currentPlayer.deserialize(this.playerUpdate);
         game.socket.emit("updatePlayer", this.playerUpdate);
         this.playerUpdate = {};
 
-        this.currentPlayer.thrownBalls.forEach((id) => {
-            const { x, y } = this.balls.get(id)!.serialize();
-            game.socket.emit("updateBall", id, { x, y });
-        });
+        Array.from(this.balls.entries()).filter(([_, { owner }]) => owner === game.socket.id).forEach(([id, ball]) => {
+            let { x, y, isProjectile } = ball.serialize();
 
-        super.update(game, delta);
+            if (!this.map.isNumberInTileRange(this.map.tiles.get(x / TILE.WIDTH, y / TILE.HEIGHT))) [x, y] = this.resolveMapCollision(x, y);
+            ball.pos.setTo(x, y);
+
+            game.socket.emit("updateBall", id, { x, y, isProjectile });
+        });
     }
 
     private addPlayer(id: string, { x, y, username }: PlayerData) {
@@ -154,12 +239,12 @@ export class Play extends ex.Scene {
     }
 
     private removePlayer(id: string) {
-        this.players.get(id)!.kill();
+        this.players.get(id)?.kill();
         this.players.delete(id);
     }
 
-    private addBall(id: string, { x, y, isProjectile, direction, startSpeed }: BallData) {
-        const ball = new Ball(isProjectile, direction, startSpeed);
+    private addBall(id: string, { x, y, isProjectile, owner, direction, startSpeed }: BallData) {
+        const ball = new Ball(isProjectile, owner, direction, startSpeed);
         ball.pos.setTo(x * TILE.WIDTH, y * TILE.HEIGHT);
 
         this.balls.set(id, ball);
@@ -167,11 +252,46 @@ export class Play extends ex.Scene {
     }
 
     private removeBall(id: string) {
-        this.balls.get(id)!.kill()
+        this.balls.get(id)?.kill();
         this.balls.delete(id);
     }
 
-    private getMovementFromKey(): ex.Vector {
+    private getVelocityFromKeys(): ex.Vector {
         return [ex.Vector.Up, ex.Vector.Down, ex.Vector.Left, ex.Vector.Right].reduce((v1, v2, i) => v1.add(v2.scale((this.keysDown & (0b10 ** i)) >> i)), ex.Vector.Zero);
+    }
+
+    private getVelocityFromPointer(): ex.Vector {
+        return this.input.pointers.primary.lastScreenPos.sub(ex.vec(window.innerWidth / 2, window.innerHeight / 2));
+    }
+
+    private resolveMapCollision(x: number, y: number): Vector {
+        const queue: Vector[] = [[x / TILE.WIDTH, y / TILE.HEIGHT]];
+        for (const _ of Array(Play.RESOLVE_COLLISION_LOOPS).keys()) {
+            const queuedTiles: Vector[] = [];
+
+            for (const i of queue.keys()) {
+                let [tx, ty] = queue.splice(i, 1)[0];
+                tx = isNumberInRange(tx, 0, this.map.mapWidth - 1, true);
+                ty = isNumberInRange(ty, 0, this.map.mapHeight - 1, true);
+
+                const { up, down, left, right } = this.map.tiles.getAdjacentTiles(tx, ty, false);
+
+                if ((up === undefined) || this.map.isNumberInTileRange(up)) return [tx * TILE.WIDTH, (ty - 1) * TILE.HEIGHT];
+                else queuedTiles.push([tx, ty - 1]);
+
+                if ((down === undefined) || this.map.isNumberInTileRange(down)) return [tx * TILE.WIDTH, (ty + 1) * TILE.HEIGHT];
+                else queuedTiles.push([tx, ty + 1]);
+
+                if ((left === undefined) || this.map.isNumberInTileRange(left)) return [(tx - 1) * TILE.WIDTH, ty * TILE.HEIGHT];
+                else queuedTiles.push([tx - 1, ty]);
+
+                if ((right === undefined) || this.map.isNumberInTileRange(right)) return [(tx + 1) * TILE.WIDTH, ty * TILE.HEIGHT];
+                else queuedTiles.push([tx + 1, ty]);
+            }
+
+            queue.push(...queuedTiles);
+        }
+
+        return [x, y];
     }
 }

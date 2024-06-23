@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "nodemon -w src/server -x tsx src/server/index.ts",
+    "dev": "nodemon -w src/server -w src/global -x tsx src/server/index.ts",
     "start": "NODE_ENV=production tsx src/server/index.ts",
     "build": "vite build"
   },

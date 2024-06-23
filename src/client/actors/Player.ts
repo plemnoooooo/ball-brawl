@@ -66,6 +66,5 @@ export class Player extends ex.Actor {
         if (username) this.username = username;
         if (collectedBalls !== undefined) this.collectedBalls = collectedBalls;
         if (stunned !== undefined) this.stunned = stunned;
-        console.log(stunned);
     }
 }

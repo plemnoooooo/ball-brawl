@@ -1,12 +1,12 @@
 import { Vector } from "../../global/types";
 import { Grid, Random } from "../../global/utils";
 
-// perlin noise generator from https://github.com/joeiddon/perlin
+// perlin noise generator adapted from https://github.com/joeiddon/perlin
 export class Perlin {
     tiles: Grid<number>;
     private gradients: Grid<Vector>;
 
-    constructor(public width: number, public height: number, public magnitude: Vector = [10, 10]) {
+    constructor(public width: number, public height: number) {
         this.tiles = new Grid(width, height);
         this.gradients = new Grid(width, height);
 
@@ -50,12 +50,11 @@ export class Perlin {
     private dotProductGrid([x, y]: Vector, [vx, vy]: Vector) {
         const dx = x - vx;
         const dy = y - vy;
-        const [mx, my] = this.magnitude;
 
         if (this.gradients.get(vx, vy) === null) this.gradients.set(Perlin.getRandomVector(), vx, vy);
         const [gx, gy] = this.gradients.get(vx, vy);
 
-        return (dx * gx * mx) + (dy * gy * my);
+        return (dx * gx) + (dy * gy);
     }
 
     private static interpolate(x: number, a: number, b: number) {

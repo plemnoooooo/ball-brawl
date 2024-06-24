@@ -1,6 +1,8 @@
 # Ball Brawl
 
-## IN DEVELOPMENT
+## WARNING
+
+This game is still in developement. Some features may be buggy or not implemented yet.
 
 ![game preview](/.github/README/preview.png)
 

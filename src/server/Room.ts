@@ -174,12 +174,12 @@ export default class Room {
     }
 
     private getRandomVector(preventCollision: boolean = true): Vector {
-        let vector = Random.vector([this.map.mapWidth * TILE.WIDTH, this.map.mapHeight * TILE.HEIGHT]);
+        let vector = Random.vector([this.map.tiles.width * TILE.WIDTH, this.map.tiles.height * TILE.HEIGHT]);
         if (!preventCollision) return vector;
 
         const averageTileWeight = findAverage(this.map.tiles.raw(true));
         while (!isNumberInRange(this.map.tiles.get(vector[0] / TILE.WIDTH, vector[1] / TILE.HEIGHT), averageTileWeight - TILE.OFFSET.MIN, averageTileWeight + TILE.OFFSET.MAX)) {
-            vector = Random.vector([this.map.mapWidth * TILE.WIDTH, this.map.mapHeight * TILE.HEIGHT]);
+            vector = Random.vector([this.map.tiles.width * TILE.WIDTH, this.map.tiles.height * TILE.HEIGHT]);
         }
 
         return vector;

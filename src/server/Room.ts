@@ -1,7 +1,7 @@
 import { SnapshotInterpolation } from "@geckos.io/snapshot-interpolation";
 import { State } from "@geckos.io/snapshot-interpolation/lib/types";
 
-import { BALL, MAP, SERVER, TILE } from "../global/constants";
+import { BALL, SERVER, TILE } from "../global/constants";
 import { Ball, Events, Player, Vector } from "../global/types";
 import { Random, findAverage, isNumberInRange } from "../global/utils";
 

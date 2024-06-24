@@ -21,6 +21,7 @@ export class BallCounter extends ex.ScreenElement {
             font: new ex.Font({
                 color: BallCounter.TEXT_COLOR,
                 size: BallCounter.FONT_SIZE,
+                baseAlign: ex.BaseAlign.Top,
                 textAlign: ex.TextAlign.Center
             })
         });
@@ -39,7 +40,7 @@ export class BallCounter extends ex.ScreenElement {
 
         this.graphics.onPostDraw = (ctx) => {
             this.background.width = this.text.width + (2 * BallCounter.PADDING_X);
-            this.background.draw(ctx, -this.background.width / 2, -BallCounter.PADDING_Y);
+            this.background.draw(ctx, -this.background.width / 2, BallCounter.PADDING_Y);
 
             this.text.text = `${this.count}`;
             this.text.draw(ctx, 0, 0);

@@ -1,4 +1,4 @@
- import { SnapshotInterpolation } from "@geckos.io/snapshot-interpolation";
+import { SnapshotInterpolation } from "@geckos.io/snapshot-interpolation";
 import { State } from "@geckos.io/snapshot-interpolation/lib/types";
 
 import { BALL, MAP, SERVER, TILE } from "../global/constants";
@@ -174,12 +174,12 @@ export default class Room {
     }
 
     private getRandomVector(preventCollision: boolean = true): Vector {
-        let vector = Random.vector([MAP.WIDTH * TILE.WIDTH, MAP.HEIGHT * TILE.HEIGHT]);
+        let vector = Random.vector([this.map.mapWidth * TILE.WIDTH, this.map.mapHeight * TILE.HEIGHT]);
         if (!preventCollision) return vector;
 
         const averageTileWeight = findAverage(this.map.tiles.raw(true));
         while (!isNumberInRange(this.map.tiles.get(vector[0] / TILE.WIDTH, vector[1] / TILE.HEIGHT), averageTileWeight - TILE.OFFSET.MIN, averageTileWeight + TILE.OFFSET.MAX)) {
-            vector = Random.vector([MAP.WIDTH * TILE.WIDTH, MAP.HEIGHT * TILE.HEIGHT]);
+            vector = Random.vector([this.map.mapWidth * TILE.WIDTH, this.map.mapHeight * TILE.HEIGHT]);
         }
 
         return vector;

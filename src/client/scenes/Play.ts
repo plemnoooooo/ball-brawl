@@ -5,6 +5,7 @@ import { Grid, isNumberInRange, Random } from "../../global/utils";
 
 import { Ball, Map as MapActor, Player } from "../actors";
 import Game from "../Game";
+import { BallCounter, ThrowButton } from "../ui";
 
 export class Play extends ex.Scene { 
     static readonly RESOLVE_COLLISION_LOOPS = 8;
@@ -14,13 +15,17 @@ export class Play extends ex.Scene {
     private firstPointerPos!: ex.Vector;
     private now!: number;
 
+    declare engine: Game;
+
     players: Map<string, Player>;
     balls: Map<string, Ball>;
     map!: MapActor;
 
     private currentPlayer!: Player;
     private playerUpdate: Partial<PlayerData>;
-    private throwButton!: ex.ScreenElement;
+    
+    private ballCounter!: BallCounter;
+    private throwButton!: ThrowButton;
 
     constructor() {
         super();
@@ -32,34 +37,11 @@ export class Play extends ex.Scene {
     }
 
     onInitialize(game: Game) {
-        this.throwButton = new ex.ScreenElement({
-            x: game.halfDrawWidth,
-            y: game.drawHeight - 80,
-            z: 999,
-            anchor: ex.Vector.Half,
-            radius: 40,
-            color: ex.Color.Gray
-        });
-
-        this.throwButton.on("pointerdown", () => {
-            const id = this.currentPlayer?.collectedBalls.splice(Random.number(this.currentPlayer.collectedBalls.length), 1)[0];
-            if (!id) return;
-            
-            const { x, y } = this.currentPlayer.pos.clone().scale(ex.vec(1 / TILE.WIDTH, 1 / TILE.HEIGHT));
-            const direction = this.getVelocityFromPointer().toAngle();
-            this.addBall(id, {
-                x,
-                y,
-
-                isProjectile: true,
-                owner: game.socket.id!,
-                direction,
-                startSpeed: BALL.THROW_SPEED
-            });
-
-            game.socket.emit("throwBall", id, direction);
-        });
-
+        this.ballCounter = new BallCounter();
+        this.throwButton = new ThrowButton();
+        this.throwButton.on("pointerdown", this.throwBall.bind(this));
+        
+        this.add(this.ballCounter);
         this.add(this.throwButton);
         
         game.socket.emitWithAck("retrieveData").then(({ players, balls, map }) => {
@@ -113,6 +95,7 @@ export class Play extends ex.Scene {
                     }, {} as Record<string, Omit<Omit<BallData, "isProjectile">, "owner">>);
 
                     game.socket.emit("hitByBall", dispersedBalls);
+                    this.ballCounter.count -= Object.keys(dispersedBalls).length;
 
                     return;
                 }
@@ -121,6 +104,7 @@ export class Play extends ex.Scene {
                 this.removeBall(id);
 
                 game.socket.emit("collectBall", id);
+                this.ballCounter.count++;
             });
             
             this.camera.addStrategy(new ex.LockCameraToActorStrategy(this.currentPlayer));
@@ -137,29 +121,10 @@ export class Play extends ex.Scene {
         game.socket.on("deleteBall", this.removeBall.bind(this));
 
         this.input.keyboard.on("press", ({ key }) => {
-            if (key !== ex.Keys.Space) {
-                const i = Play.KEYS.indexOf(key);
-                this.keysDown ^= (i < 0) ? 0 : (0b10 ** i);
+            if (key === ex.Keys.Space) this.throwBall();
 
-                return;
-            }
-
-            const id = this.currentPlayer?.collectedBalls.splice(Random.number(this.currentPlayer.collectedBalls.length), 1)[0];
-            if (!id) return;
-            
-            const { x, y } = this.currentPlayer.pos.clone().scale(ex.vec(1 / TILE.WIDTH, 1 / TILE.HEIGHT));
-            const direction = this.getVelocityFromPointer().toAngle();
-            this.addBall(id, {
-                x,
-                y,
-
-                isProjectile: true,
-                owner: game.socket.id!,
-                direction,
-                startSpeed: BALL.THROW_SPEED
-            });
-
-            game.socket.emit("throwBall", id, direction);
+            const i = Play.KEYS.indexOf(key);
+            this.keysDown ^= (i < 0) ? 0 : (0b10 ** i);
         });
 
         this.input.keyboard.on("release", ({ key }) => {
@@ -256,12 +221,32 @@ export class Play extends ex.Scene {
         this.balls.delete(id);
     }
 
+    private throwBall() {
+        const id = this.currentPlayer?.collectedBalls.splice(Random.number(this.currentPlayer.collectedBalls.length), 1)[0];
+        if (!id) return;
+        
+        const { x, y } = this.currentPlayer.pos.clone().scale(ex.vec(1 / TILE.WIDTH, 1 / TILE.HEIGHT));
+        const direction = this.getVelocityFromPointer().toAngle();
+        this.addBall(id, {
+            x,
+            y,
+
+            isProjectile: true,
+            owner: this.engine.socket.id!,
+            direction,
+            startSpeed: BALL.THROW_SPEED
+        });
+
+        this.engine.socket.emit("throwBall", id, direction);
+        this.ballCounter.count--;
+    }
+
     private getVelocityFromKeys(): ex.Vector {
         return [ex.Vector.Up, ex.Vector.Down, ex.Vector.Left, ex.Vector.Right].reduce((v1, v2, i) => v1.add(v2.scale((this.keysDown & (0b10 ** i)) >> i)), ex.Vector.Zero);
     }
 
     private getVelocityFromPointer(): ex.Vector {
-        return this.input.pointers.primary.lastScreenPos.sub(ex.vec(window.innerWidth / 2, window.innerHeight / 2));
+        return this.input.pointers.primary.lastScreenPos.sub(ex.vec(this.engine.halfDrawWidth, this.engine.halfDrawHeight));
     }
 
     private resolveMapCollision(x: number, y: number): Vector {

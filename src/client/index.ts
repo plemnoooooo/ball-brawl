@@ -1,9 +1,9 @@
 import io from "socket.io-client";
-// import eruda from "eruda";
+import eruda from "eruda";
 import "./style.css";
 import Game from "./Game";
 
-// eruda.init();
+eruda.init();
 
 window.addEventListener("DOMContentLoaded", () => {
     const socket = io();

@@ -2,6 +2,8 @@
 
 ## IN DEVELOPMENT
 
+![game preview](/.github/README/preview.png)
+
 A multiplayer game is about throwing and collecting the most number of balls.
 
 ## How to play

@@ -1,6 +1,6 @@
 # Ball Brawl
 
-## WARNING
+## DISCLAIMER
 
 This game is still in developement. Some features may be buggy or not implemented yet.
 
@@ -24,4 +24,4 @@ To throw a ball, aim the ball with your mouse or finger snd either use the space
 
 * [Excalibur.js](https://excaliburjs.com/) (2D game engine)
 * [Socket.io](https://socket.io/) (websockets connection)
-* [Snapshot Interpolation](https://github.com/geckosio/snapshot-interpolation) (websockets data smoothing)
+* [Snapshot Interpolation](https://github.com/geckosio/snapshot-interpolation) (websockets data interpolation)
